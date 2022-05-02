@@ -3,6 +3,7 @@ package httpc
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -76,9 +77,27 @@ func sniffContentType(body io.Reader) (io.Reader, string) {
 	n, _ := io.CopyN(buf, body, 512)
 	if n > 0 {
 		body = io.MultiReader(buf, body)
-		return body, http.DetectContentType(buf.Bytes())
+		p := buf.Bytes()
+		if sniffJSON(p) {
+			return body, "application/json"
+		}
+		return body, http.DetectContentType(p)
 	}
 	return body, ""
+}
+
+func sniffJSON(p []byte) bool {
+	r := bytes.NewReader(p)
+	dec := json.NewDecoder(r)
+	var v any
+	err := dec.Decode(&v)
+	if err == io.ErrUnexpectedEOF && len(p) == 512 {
+		return true
+	}
+	if err != nil {
+		return false
+	}
+	return dec.Decode(&v) != nil
 }
 
 func RequestURL(base, s string) string {
